@@ -310,10 +310,16 @@ bool CMountProg::ReadPathsFromFile(char* sFileName)
         std::istringstream ss;
 
         while (std::getline(pathFile, line)) {
+            ss.clear();
+            paths.clear();
             ss.str(line);
+
             // split path and alias separated by '>'
             while (std::getline(ss, path, '>')) {
                 paths.push_back(path);
+            }
+            if (paths.size() < 1) {
+                continue;
             }
             if (paths.size() < 2) {
                 paths.push_back(paths[0]);
