@@ -48,7 +48,7 @@ CFileTable::~CFileTable()
     }
 }
 
-unsigned long CFileTable::GetIDByPath(char *path)
+unsigned long CFileTable::GetIDByPath(const char *path)
 {
     unsigned char *handle;
 
@@ -61,20 +61,17 @@ unsigned long CFileTable::GetIDByPath(char *path)
     return *(unsigned long *)handle;
 }
 
-unsigned char *CFileTable::GetHandleByPath(char *path)
+
+
+unsigned char *CFileTable::GetHandleByPath(const char *path)
 {
 	tree_node_<FILE_ITEM> *node;
 
 	node = g_FileTree.FindFileItemForPath(path);
 
 	if (node == NULL) {
-		//printf("Add file for path %s\n", path);
         AddItem(path);
 		node = g_FileTree.FindFileItemForPath(path);
-		if (node == NULL || node->data.handle == NULL)
-		{
-			//printf("Missing handle for path %s\n", path);
-		}
     }
 	if (node == NULL) {
 		return NULL;
@@ -83,7 +80,7 @@ unsigned char *CFileTable::GetHandleByPath(char *path)
 	return node->data.handle;
 }
 
-char *CFileTable::GetPathByHandle(unsigned char *handle)
+bool CFileTable::GetPathByHandle(unsigned char *handle, std::string& path)
 {
 	unsigned int id;
 	tree_node_<FILE_ITEM>* node;
@@ -92,11 +89,10 @@ char *CFileTable::GetPathByHandle(unsigned char *handle)
 	// TODO : Not found item
 	node = GetItemByID(id);
 	if (node != NULL) {
-		return g_FileTree.GetNodeFullPath(node);
-	} else {
-		return NULL;
+		g_FileTree.GetNodeFullPath(node, path);
+		return true;
 	}
-    //return pItem == NULL ? NULL : pItem->path;
+    return false;
 }
 
 tree_node_<FILE_ITEM>* CFileTable::FindItemByPath(char *path)
@@ -156,15 +152,13 @@ tree_node_<FILE_ITEM>* CFileTable::FindItemByPath(char *path)
 	return node;
 }
 
-tree_node_<FILE_ITEM>* CFileTable::AddItem(char *path)
+tree_node_<FILE_ITEM>* CFileTable::AddItem(const char *path)
 {
     FILE_ITEM item;
 	tree_node_<FILE_ITEM>* node;
     unsigned int nIndex;
 
-	item.path = new char[strlen(path) + 1];
-	strcpy_s(item.path, (strlen(path) + 1), path);  //path
-	item.nPathLen = strlen(item.path);  //path length
+	item.path = std::string(path);
 	item.handle = new unsigned char[NFS3_FHSIZE];
 	memset(item.handle, 0, NFS3_FHSIZE * sizeof(unsigned char));
 	*(unsigned int *)item.handle = m_nTableSize;  //let its handle equal the index
@@ -256,7 +250,7 @@ void CFileTable::PutItemInCache(FILE_ITEM *pItem)
     }
 }
 
-bool CFileTable::RemoveItem(char *path) {
+bool CFileTable::RemoveItem(const char *path) {
    /* CACHE_LIST *pCurr;
     FILE_ITEM *pItem;
     unsigned int i, j, nPathLen;
@@ -316,8 +310,9 @@ bool CFileTable::RemoveItem(char *path) {
 			pTable->pItems[handle + TABLE_SIZE - i] = NULL;
 		}
 		// Remove from table end
-
-		g_FileTree.RemoveItem(g_FileTree.GetNodeFullPath(foundDeletedItem));
+		std::string item;
+		g_FileTree.GetNodeFullPath(foundDeletedItem, item);
+		g_FileTree.RemoveItem( item.c_str());
 		return true;
 	}
 	else {
@@ -354,19 +349,19 @@ bool FileExists(char *path)
     return handle == -1 ? false : strcmp(fileinfo.name, strrchr(path, '\\') + 1) == 0;  //filename must match case
 }
 
-unsigned long GetFileID(char *path)
+uint64_t GetFileID(const char *path)
 {
     return g_FileTable.GetIDByPath(path);
 }
 
-unsigned char *GetFileHandle(char *path)
+unsigned char *GetFileHandle(const char *path)
 {
     return g_FileTable.GetHandleByPath(path);
 }
 
-char *GetFilePath(unsigned char *handle)
+void GetFilePath(unsigned char *handle, std::string &path)
 {
-    return g_FileTable.GetPathByHandle(handle);
+    g_FileTable.GetPathByHandle(handle, path);
 }
 
 int RenameFile(char *pathFrom, char *pathTo)
