@@ -1,346 +1,69 @@
 #include "FileTable.h"
-#include "FileTree.h"
 #include <string.h>
 #include <io.h>
 #include <stdio.h>
 #include <windows.h>
 #include <sys/stat.h>
-#include "tree.hh"
+#include <vector>
+#include <string>
+#include <iostream>
+#include <string>
+#include "pathcch.h" 
+#pragma comment(lib, "pathcch.lib")
 
 #define FHSIZE 32
 #define NFS3_FHSIZE 64
 
 static CFileTable g_FileTable;
-static CFileTree g_FileTree;
+
+std::unordered_map<long long, char*> FileIdentifierToPathMap;
+std::unordered_map<char*, long long> PathToFileIdentifierMap;
 
 CFileTable::CFileTable()
 {
-    m_pLastTable = m_pFirstTable = new FILE_TABLE;
-    memset(m_pFirstTable, 0, sizeof(FILE_TABLE));
-    m_nTableSize = 0;
-    m_pCacheList = NULL;
+
 }
 
 CFileTable::~CFileTable()
 {
-    FILE_TABLE *pTable, *pTemp;
-    unsigned int i;
-    CACHE_LIST *pPrev;
-
-    pTable = m_pFirstTable;
-
-    while (pTable != NULL) { //free file table
-        for (i = 0; i < TABLE_SIZE; i++) {
-            if (!pTable->pItems[i]) {
-                delete[] pTable->pItems[i];
-            }
-        }
-
-        pTemp = pTable;
-        pTable = pTable->pNext;
-        delete pTemp;
-    }
-
-    while (m_pCacheList != NULL) { //free cache
-        pPrev = m_pCacheList;
-        m_pCacheList = m_pCacheList->pNext;
-        delete pPrev;
-    }
+ 
 }
 
-unsigned long CFileTable::GetIDByPath(char *path)
+unsigned long long CFileTable::GetIDByPath(char *path)
 {
-    unsigned char *handle;
+	unsigned char *handle;
 
-    handle = GetHandleByPath(path);
-	if (handle == NULL)
-	{
-		//printf("Can't find id for path %s\n", path);
+	// printf("\n\nPATH %s\n", path);
+	path = GetRealPathPath(path);
+
+	
+//	printf("REAL %s\n\n", path);
+	handle = GetFileIdentifierByPath(path);
+	if (handle == NULL) {
 		return 0;
 	}
-    return *(unsigned long *)handle;
+	unsigned long long ulli2 = strtoull(reinterpret_cast<const char*>(handle), NULL, 16);
+    return ulli2;
 }
 
 unsigned char *CFileTable::GetHandleByPath(char *path)
 {
-	tree_node_<FILE_ITEM> *node;
-
-	node = g_FileTree.FindFileItemForPath(path);
-
-	if (node == NULL) {
-		//printf("Add file for path %s\n", path);
-        AddItem(path);
-		node = g_FileTree.FindFileItemForPath(path);
-		if (node == NULL || node->data.handle == NULL)
-		{
-			//printf("Missing handle for path %s\n", path);
-		}
-    }
-	if (node == NULL) {
-		return NULL;
-	}
-
-	return node->data.handle;
+	return GetFileIdentifierByPath(path);
 }
 
 char *CFileTable::GetPathByHandle(unsigned char *handle)
 {
-	unsigned int id;
-	tree_node_<FILE_ITEM>* node;
-
-	id = *(unsigned int *)handle;
-	// TODO : Not found item
-	node = GetItemByID(id);
-	if (node != NULL) {
-		return g_FileTree.GetNodeFullPath(node);
-	} else {
-		return NULL;
-	}
-    //return pItem == NULL ? NULL : pItem->path;
+	return GetPathByFileIdentifier(handle);
 }
 
-tree_node_<FILE_ITEM>* CFileTable::FindItemByPath(char *path)
+FILE_ITEM CFileTable::FindItemByPath(char *path)
 {
-	tree_node_<FILE_ITEM>* node= NULL;/*
-    CACHE_LIST *pCurr;
-
-    unsigned int i, j, nPathLen;
-    FILE_TABLE *pTable;
-
-    nPathLen = strlen(path);
-    pItem = NULL;
-
-    pCurr = m_pCacheList;
-
-    while (pCurr != NULL) { //search in cache
-        if (nPathLen == pCurr->pItem->nPathLen) { //comparing path length is faster than comparing path
-            if (strcmp(path, pCurr->pItem->path) == 0) { //compare path
-                pItem = pCurr->pItem;  //path matched
-                break;
-            }
-        }
-
-        pCurr = pCurr->pNext;
-    }
-
-    if (pItem == NULL) { //not found in cache
-        pTable = m_pFirstTable;
-
-        for (i = 0; i < m_nTableSize; i += TABLE_SIZE) { //search in file table
-            for (j = 0; j < TABLE_SIZE; j++) {
-                if (i + j >= m_nTableSize) { //all items in file table are compared
-                    return NULL;
-                }
-
-                if (nPathLen == pTable->pItems[j].nPathLen) { //comparing path length is faster than comparing path
-                    if (strcmp(path, pTable->pItems[j].path) == 0) { //compare path
-                        pItem = pTable->pItems + j;  //path matched
-                        break;
-                    }
-                }
-            }
-
-            if (pItem != NULL) {
-                break;
-            }
-
-            pTable = pTable->pNext;
-        }
-    }
-
-    if (pItem != NULL) {
-        //TODO IMPLEMENTED CACHE RIGHT
-        //PutItemInCache(pItem);  //put the found item in cache
-    }
-	*/
-	return node;
+	return GetFileItemFromPath(path);
 }
 
-tree_node_<FILE_ITEM>* CFileTable::AddItem(char *path)
+FILE_ITEM CFileTable::GetItemByID(unsigned char *nID)
 {
-    FILE_ITEM item;
-	tree_node_<FILE_ITEM>* node;
-    unsigned int nIndex;
-
-	item.path = new char[strlen(path) + 1];
-	strcpy_s(item.path, (strlen(path) + 1), path);  //path
-	item.nPathLen = strlen(item.path);  //path length
-	item.handle = new unsigned char[NFS3_FHSIZE];
-	memset(item.handle, 0, NFS3_FHSIZE * sizeof(unsigned char));
-	*(unsigned int *)item.handle = m_nTableSize;  //let its handle equal the index
-	item.bCached = false;  //not in the cache
-
-    if (m_nTableSize > 0 && (m_nTableSize & (TABLE_SIZE - 1)) == 0) {
-        m_pLastTable->pNext = new FILE_TABLE;
-        m_pLastTable = m_pLastTable->pNext;
-        memset(m_pLastTable, 0, sizeof(FILE_TABLE));
-    }
-
-	//printf("\nAdd file %s for handle %i\n", path, *(unsigned int *)item.handle);
-
-	g_FileTree.AddItem(path, item.handle);
-	node = g_FileTree.FindFileItemForPath(path);
-	if (node == NULL) {
-		//printf("Can't find node just added %s\n", path);
-	}
-
-	m_pLastTable->pItems[nIndex = m_nTableSize & (TABLE_SIZE - 1)] = node;  //add the new item in the file table
-    ++m_nTableSize;
-
-	return node;  //return the pointer to the new item
-}
-
-tree_node_<FILE_ITEM>* CFileTable::GetItemByID(unsigned int nID)
-{
-	FILE_TABLE *pTable;
-	unsigned int i;
-
-	if (nID >= m_nTableSize) {
-		return NULL;
-	}
-
-	pTable = m_pFirstTable;
-
-	for (i = TABLE_SIZE; i <= nID; i += TABLE_SIZE) {
-		pTable = pTable->pNext;
-	}
-
-	return pTable->pItems[nID + TABLE_SIZE - i];
-}
-
-void CFileTable::PutItemInCache(FILE_ITEM *pItem)
-{
-    CACHE_LIST *pPrev, *pCurr;
-    int nCount;
-
-    pPrev = NULL;
-    pCurr = m_pCacheList;
-
-    if (pItem->bCached) { //item is already in the cache
-        while (pCurr != NULL) {
-            if (pItem == pCurr->pItem) {
-                if (pCurr == m_pCacheList) {  //at the first
-                    return;
-                }
-                else {  //move to the first
-                    pPrev->pNext = pCurr->pNext;
-                    pCurr->pNext = m_pCacheList;
-                    m_pCacheList = pCurr;
-                    return;
-                }
-            }
-
-            pPrev = pCurr;
-            pCurr = pCurr->pNext;
-        }
-    }
-    else {
-        pItem->bCached = true;
-
-        for (nCount = 0; nCount < 9 && pCurr != NULL; nCount++) { //seek to the end of the cache
-            pPrev = pCurr;
-            pCurr = pCurr->pNext;
-        }
-
-        if (nCount == 9 && pCurr != NULL) { //there are 10 items in the cache
-            pPrev->pNext = NULL;  //remove the last
-            pCurr->pItem->bCached = false;
-        }
-        else {
-            pCurr = new CACHE_LIST;
-        }
-
-        pCurr->pItem = pItem;
-        pCurr->pNext = m_pCacheList;
-        m_pCacheList = pCurr;  //insert to the first
-    }
-}
-
-bool CFileTable::RemoveItem(char *path) {
-   /* CACHE_LIST *pCurr;
-    FILE_ITEM *pItem;
-    unsigned int i, j, nPathLen;
-    FILE_TABLE *pTable;
-    int pItemIndex;
-
-    nPathLen = strlen(path);
-    pItem = NULL;
-
-    bool foundDeletedItem = false;
-
-    pTable = m_pFirstTable;
-
-    for (i = 0; i < m_nTableSize; i += TABLE_SIZE) { //search in file table
-        for (j = 0; j < TABLE_SIZE; j++) {
-            if (i + j >= m_nTableSize) { //all items in file table are compared
-                break;
-            }
-
-            if (!foundDeletedItem)
-            {
-                if (nPathLen == pTable->pItems[j].nPathLen) { //comparing path length is faster than comparing path
-                    if (strcmp(path, pTable->pItems[j].path) == 0) { //compare path
-                        foundDeletedItem = true;
-                        memset(&(pTable->pItems[j]), 0, sizeof(FILE_ITEM));
-                    }
-                }
-            }
-        }
-
-        pTable = pTable->pNext;
-    }
-
-    if (foundDeletedItem) {
-		// we should not uncrement table size, because new file handle base on it
-        //--m_nTableSize;
-    }*/
-	tree_node_<FILE_ITEM>* foundDeletedItem;
-	foundDeletedItem = g_FileTree.FindFileItemForPath(path);
-	if (foundDeletedItem != NULL) {
-		// Remove from table
-		FILE_TABLE *pTable;
-		unsigned int i;
-		unsigned int handle = *(unsigned int *)foundDeletedItem->data.handle;
-
-		if (handle >= m_nTableSize) {
-			//printf("File handle not found to remove : %s", path);
-			return false;
-		} else {
-
-			pTable = m_pFirstTable;
-
-			for (i = TABLE_SIZE; i <= handle; i += TABLE_SIZE) {
-				pTable = pTable->pNext;
-			}
-
-			pTable->pItems[handle + TABLE_SIZE - i] = NULL;
-		}
-		// Remove from table end
-
-		g_FileTree.RemoveItem(g_FileTree.GetNodeFullPath(foundDeletedItem));
-		return true;
-	}
-	else {
-		//printf("File not found to remove : %s", path);
-	}
-    return false;
-}
-
-void CFileTable::RenameFile(char *pathFrom, char* pathTo)
-{
-	/*FILE_ITEM *pItem;
-
-	pItem = g_FileTable.FindItemByPath(pathFrom);
-
-	if (pItem == NULL) {
-	} else {
-		delete[] pItem->path;
-		pItem->nPathLen = strlen(pathTo);
-		pItem->path = new char[pItem->nPathLen + 1];
-		strcpy_s(pItem->path, (pItem->nPathLen + 1), pathTo);  //replace the path by new one
-	}
-	*/
-	g_FileTree.RenameItem(pathFrom, pathTo);
+	return GetFileItemFromPath(GetPathByFileIdentifier(nID));
 }
 
 bool FileExists(char *path)
@@ -354,7 +77,7 @@ bool FileExists(char *path)
     return handle == -1 ? false : strcmp(fileinfo.name, strrchr(path, '\\') + 1) == 0;  //filename must match case
 }
 
-unsigned long GetFileID(char *path)
+unsigned long long GetFileID(char *path)
 {
     return g_FileTable.GetIDByPath(path);
 }
@@ -371,25 +94,21 @@ char *GetFilePath(unsigned char *handle)
 
 int RenameFile(char *pathFrom, char *pathTo)
 {
-	tree_node_<FILE_ITEM>* node;
-    FILE_ITEM *pItem;
-
-	node = g_FileTable.FindItemByPath(pathFrom);
-    pItem = &(node->data);
-
-    if (pItem == NULL) {
-        return false;
-    }
-
-    errno_t errorNumber = rename(pathFrom, pathTo);
-
-    if (errorNumber == 0) { //success
-		g_FileTable.RenameFile(pathFrom, pathTo);
-        return errorNumber;
-    }
-    else {
-        return errorNumber;
-    }
+	// must be done this way so the new filename gehts a new id, nut ossibsle aotherwise with nfs
+	// as a subseqend getattr call with the old file name MUST fail but doenst becuase the file id is still the ranem when using just rename
+	CopyFile(pathFrom, pathTo, 0);
+	// errno_t errorNumber = rename(pathFrom, pathTo);
+	errno_t errorNumber = remove(pathFrom);
+	if (errorNumber == 0) { //success
+		// FileIdentifierToPathMap[PathToFileIdentifierMap[pathFrom]] = pathTo;
+		// PathToFileIdentifierMap[pathTo] = PathToFileIdentifierMap[pathFrom];
+		PathToFileIdentifierMap.erase(pathFrom);
+		FileIdentifierToPathMap.erase(PathToFileIdentifierMap[pathFrom]);
+		return errorNumber;
+	}
+	else {
+		return errorNumber;
+	}
 }
 
 int RenameDirectory(char *pathFrom, char *pathTo)
@@ -419,11 +138,10 @@ int RenameDirectory(char *pathFrom, char *pathTo)
 	strcpy_s(backDirectoryPathTo, (strlen(pathTo) + 1), pathTo);
 	strcat_s(backDirectoryPathTo, (strlen(pathTo) + 6), backFile);
 
-	g_FileTable.RenameFile(dotDirectoryPathFrom, dotDirectoryPathTo);
-	g_FileTable.RenameFile(backDirectoryPathFrom, backDirectoryPathTo);
+	FileIdentifierToPathMap.erase(PathToFileIdentifierMap[pathFrom]);
+	PathToFileIdentifierMap.erase(pathFrom);
+
 	return errorNumber;
-
-
 }
 
 bool RemoveFile(char *path)
@@ -433,9 +151,12 @@ bool RemoveFile(char *path)
 	nMode |= S_IWRITE;
 	_chmod(path, nMode);
 
-    if (remove(path) == 0){
-        g_FileTable.RemoveItem(path);
-        return true;
+	unsigned char * fileHandle = GetFileIdentifierByPath(path);
+
+    if (DeleteFile(path) != 0){
+		FileIdentifierToPathMap[PathToFileIdentifierMap[path]] = NULL;
+		PathToFileIdentifierMap[path] = NULL;
+		return true;
     }
     return false;
 }
@@ -461,16 +182,195 @@ int RemoveFolder(char *path)
         strcpy_s(backDirectoryPath, (strlen(path) + 1), path);
         strcat_s(backDirectoryPath, (strlen(path) + 6), backFile);
 
-        g_FileTable.RemoveItem(dotDirectoryPath);
-        g_FileTable.RemoveItem(backDirectoryPath);
-		g_FileTable.RemoveItem(path);
+		FileIdentifierToPathMap.erase(PathToFileIdentifierMap[path]);
+		PathToFileIdentifierMap.erase(path);
         return 0;
     }
     errorCode = GetLastError();
     return errorCode;
 }
 
-void RemovePathFromFileTable(char *path)
+char* GetPathByFileIdentifier(unsigned char *handle)
 {
-    g_FileTable.RemoveItem(path);
+
+
+
+	long long index = strtoull(reinterpret_cast<const char*>(handle), NULL, 16);
+	/*
+	if (FileIdentifierToPathMap.count(index) && FileIdentifierToPathMap[index] != NULL) {
+		printf("FROM CACHE %s", FileIdentifierToPathMap[index]);
+		return FileIdentifierToPathMap[index];
+	}
+	*/
+
+
+	
+	HANDLE hDisk, hFile;
+	FILE_ID_DESCRIPTOR fileIDDesc;
+	LPVOID pFileNameInfo;
+
+	hDisk = CreateFile("d:", FILE_READ_EA, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_DIRECTORY | FILE_FLAG_BACKUP_SEMANTICS, NULL);
+
+	// printf("HANDLE %i", hDisk);
+
+	fileIDDesc.dwSize = 24;              // expected by OpenFileById
+
+	fileIDDesc.FileId.QuadPart = index;         // FileID
+	fileIDDesc.Type = FileIdType; // enum value
+
+	hFile = OpenFileById(hDisk,
+		&fileIDDesc,
+		FILE_READ_EA,
+		FILE_SHARE_READ,
+		NULL,
+		0);
+	
+	// printf("HANDLE %i", hFile);
+
+	TCHAR Path[MAX_PATH];
+
+	DWORD dwRet;
+
+	dwRet = GetFinalPathNameByHandle(hFile, Path, MAX_PATH, VOLUME_NAME_DOS);
+	if (dwRet < MAX_PATH)
+	{
+		// printf("FINAL %s\n\n", Path);
+	}
+
+	CloseHandle(hDisk);
+	CloseHandle(hFile);
+
+	std::string str(Path);
+	char* chr = _strdup(str.c_str());
+	// printf("FINAL %s\n\n", chr);
+
+	FileIdentifierToPathMap.insert(std::make_pair(index, chr));
+
+
+	return chr;
+}
+
+unsigned char* GetFileIdentifierByPath(char *path)
+{
+
+	path = GetRealPathPath(path);
+	/*
+	if (PathToFileIdentifierMap.count(path) && PathToFileIdentifierMap[path] != NULL){
+	
+
+
+
+		char buffer[NFS3_FHSIZE];
+		snprintf(buffer, NFS3_FHSIZE, "%llx", PathToFileIdentifierMap[path]);
+
+
+
+		unsigned char *handle;
+		handle = new unsigned char[NFS3_FHSIZE];
+		memset(handle, 0, NFS3_FHSIZE * sizeof(unsigned char));
+		memcpy(handle, buffer, NFS3_FHSIZE * sizeof(unsigned char));
+		return handle;
+
+	}
+
+
+	*/
+
+
+
+	
+	DWORD fileAttr;
+	BY_HANDLE_FILE_INFORMATION lpFileInformation;
+	HANDLE hFile;
+	DWORD dwFlagsAndAttributes;
+
+	fileAttr = GetFileAttributes(path);
+
+	if (path == NULL || fileAttr == INVALID_FILE_ATTRIBUTES)
+	{
+		return false;
+	}
+
+	dwFlagsAndAttributes = 0;
+	if (fileAttr & FILE_ATTRIBUTE_DIRECTORY) {
+		dwFlagsAndAttributes = FILE_ATTRIBUTE_DIRECTORY | FILE_FLAG_BACKUP_SEMANTICS;
+	}
+	else if (fileAttr & FILE_ATTRIBUTE_ARCHIVE) {
+		dwFlagsAndAttributes = FILE_ATTRIBUTE_ARCHIVE | FILE_FLAG_OVERLAPPED;
+	}
+	else if (fileAttr & FILE_ATTRIBUTE_NORMAL) {
+		dwFlagsAndAttributes = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED;
+	}
+	if (fileAttr & FILE_ATTRIBUTE_REPARSE_POINT) {
+		dwFlagsAndAttributes = FILE_ATTRIBUTE_REPARSE_POINT | FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS;
+	}
+
+	hFile = CreateFile(path, FILE_READ_EA, FILE_SHARE_READ, NULL, OPEN_EXISTING, dwFlagsAndAttributes, NULL);
+
+	if (hFile == INVALID_HANDLE_VALUE) {
+		return false;
+	}
+
+	GetFileInformationByHandle(hFile, &lpFileInformation);
+	CloseHandle(hFile);
+	
+	LARGE_INTEGER fileId;
+	fileId.HighPart = lpFileInformation.nFileIndexHigh;
+	fileId.LowPart = lpFileInformation.nFileIndexLow;
+	fileId.QuadPart;
+
+	char buffer[NFS3_FHSIZE];
+	snprintf(buffer, NFS3_FHSIZE, "%llx", fileId.QuadPart);
+	// printf_s("\n\nPATH %s\n", path);
+	// printf_s("HEX from LongLo: %llx\n", fileId.QuadPart);
+	// printf_s("HEX from String: %s\n", buffer);
+
+	unsigned char *handle;
+	handle = new unsigned char[NFS3_FHSIZE];
+	memset(handle, 0, NFS3_FHSIZE * sizeof(unsigned char));
+	memcpy(handle, buffer, NFS3_FHSIZE * sizeof(unsigned char));
+
+	// FilePathToIdentifierStorage.insert(std::make_pair(path, handle));
+
+	
+	PathToFileIdentifierMap.insert(std::make_pair(path, fileId.QuadPart));
+	
+
+
+	return handle;
+}
+
+FILE_ITEM GetFileItemFromPath(char *path)
+{
+	FILE_ITEM item;
+
+
+	item.path = new char[strlen(path) + 1];
+	strcpy_s(item.path, (strlen(path) + 1), path);  //path
+	item.nPathLen = strlen(item.path);  //path length
+	item.handle = GetFileIdentifierByPath(path);
+	item.bCached = false;  //not in the cache
+
+	return item;
+}
+
+
+
+
+char* GetRealPathPath(char *path) {
+
+
+
+	bool ret = false;
+	TCHAR lpBuffer1[MAX_PATH];
+	LPTSTR lpFname1 = NULL;
+	TCHAR lpBuffer2[MAX_PATH];
+	LPTSTR lpFname2 = NULL;
+
+	GetFullPathName(path, MAX_PATH, lpBuffer1, &lpFname1);
+		
+		
+		std::string str(lpBuffer1);
+		char* chr = _strdup(str.c_str());
+		return chr;
 }

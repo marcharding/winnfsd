@@ -1,9 +1,11 @@
 #ifndef _FILETABLE_H_
 #define _FILETABLE_H_
 
-#define TABLE_SIZE 1024
+#define TABLE_SIZE 65535
 
 #include "tree.hh"
+#include <unordered_map>
+#include <string>
 
 typedef struct
 {
@@ -30,10 +32,10 @@ class CFileTable
     public:
     CFileTable();
     ~CFileTable();
-    unsigned long GetIDByPath(char *path);
+    unsigned long long GetIDByPath(char *path);
     unsigned char *GetHandleByPath(char *path);
     char *GetPathByHandle(unsigned char *handle);
-	tree_node_<FILE_ITEM>* FindItemByPath(char *path);
+	FILE_ITEM FindItemByPath(char *path);
     bool RemoveItem(char *path);
 	void RenameFile(char *pathFrom, char *pathTo);
 
@@ -45,17 +47,30 @@ class CFileTable
     unsigned int m_nTableSize;
     CACHE_LIST *m_pCacheList;
 
-	tree_node_<FILE_ITEM>* GetItemByID(unsigned int nID);
+	FILE_ITEM GetItemByID(unsigned char *nID);
     void PutItemInCache(FILE_ITEM *pItem);
+	// std::unordered_map<long long, tree_node_<FILE_ITEM>*> FileItemStorage;
+	// std::unordered_map<std::string, FILE_ITEM> FilePathItemStorage;
+	
 
 };
 
 extern bool FileExists(char *path);
-extern unsigned long GetFileID(char *path);
+extern unsigned long long GetFileID(char *path);
 extern unsigned char *GetFileHandle(char *path);
 extern char *GetFilePath(unsigned char *handle);
 extern int RenameFile(char *pathFrom, char *pathTo);
 extern int RenameDirectory(char *pathFrom, char *pathTo);
 extern int RemoveFolder(char *path);
+extern char* GetRealPathPath(char *path);
 extern bool RemoveFile(char *path);
+
+
+extern char* GetPathByFileIdentifier(unsigned char *handle);
+extern unsigned char* GetFileIdentifierByPath(char *path);
+extern FILE_ITEM GetFileItemFromPath(char *path);
+
+
+
+
 #endif
