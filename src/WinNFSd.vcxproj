@@ -133,7 +133,6 @@
     <ClCompile Include="conv.cpp" />
     <ClCompile Include="DatagramSocket.cpp" />
     <ClCompile Include="FileTable.cpp" />
-    <ClCompile Include="FileTree.cpp" />
     <ClCompile Include="MountProg.cpp" />
     <ClCompile Include="NFS3Prog.cpp" />
     <ClCompile Include="NFSProg.cpp" />
@@ -148,7 +147,6 @@
   <ItemGroup>
     <ClInclude Include="DatagramSocket.h" />
     <ClInclude Include="FileTable.h" />
-    <ClInclude Include="FileTree.h" />
     <ClInclude Include="InputStream.h" />
     <ClInclude Include="MountProg.h" />
     <ClInclude Include="NFS2Prog.h" />
