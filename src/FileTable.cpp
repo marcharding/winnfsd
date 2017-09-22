@@ -207,7 +207,6 @@ char* GetPathByFileIdentifier(unsigned char *handle)
 	
 	HANDLE hDisk, hFile;
 	FILE_ID_DESCRIPTOR fileIDDesc;
-	LPVOID pFileNameInfo;
 
 	hDisk = CreateFile("d:", FILE_READ_EA, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_DIRECTORY | FILE_FLAG_BACKUP_SEMANTICS, NULL);
 
@@ -364,8 +363,7 @@ char* GetRealPathPath(char *path) {
 	bool ret = false;
 	TCHAR lpBuffer1[MAX_PATH];
 	LPTSTR lpFname1 = NULL;
-	TCHAR lpBuffer2[MAX_PATH];
-	LPTSTR lpFname2 = NULL;
+
 
 	GetFullPathName(path, MAX_PATH, lpBuffer1, &lpFname1);
 		
