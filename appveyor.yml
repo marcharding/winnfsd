@@ -31,6 +31,7 @@ before_build:
   - del "C:\Program Files (x86)\MSBuild\12.0\Microsoft.Common.targets\ImportAfter\Xamarin.Common.targets"
   - del "C:\Program Files (x86)\MSBuild\14.0\Microsoft.Common.targets\ImportAfter\Xamarin.Common.targets"
   - set PATH=C:\Program Files (x86)\MSBuild\14.0\Bin;%PATH%
+  - ps: $PlatformToolset = "v140"
   - ps: |
       if ($env:APPVEYOR_REPO_TAG_NAME) { $env:VERSION = $env:APPVEYOR_REPO_TAG_NAME } else { $env:VERSION = $env:APPVEYOR_REPO_BRANCH }
       (Get-Content $env:APPVEYOR_BUILD_FOLDER\src\winnfsd.cpp).replace('{{VERSION}}', $env:VERSION) | Set-Content $env:APPVEYOR_BUILD_FOLDER\src\winnfsd.cpp
