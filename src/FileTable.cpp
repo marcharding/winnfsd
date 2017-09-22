@@ -319,7 +319,7 @@ unsigned char* GetFileIdentifierByPath(char *path)
 	fileId.QuadPart;
 
 	char buffer[NFS3_FHSIZE];
-	snprintf(buffer, NFS3_FHSIZE, "%llx", fileId.QuadPart);
+	_snprintf_s(buffer, NFS3_FHSIZE, "%llx", fileId.QuadPart);
 	// printf_s("\n\nPATH %s\n", path);
 	// printf_s("HEX from LongLo: %llx\n", fileId.QuadPart);
 	// printf_s("HEX from String: %s\n", buffer);
