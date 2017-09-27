@@ -69,8 +69,8 @@ extern bool RemoveFile(char *path);
 extern char* GetPathByFileIdentifier(unsigned char *handle);
 extern unsigned char* GetFileIdentifierByPath(char *path);
 extern FILE_ITEM GetFileItemFromPath(char *path);
-
-
-
+void stream2hex(const std::string str, std::string& hexstr, bool capital = false);
+void hex2stream(const std::string hexstr, std::string& str);
+extern unsigned long long GetFileIdentifierByPathLongLong(char *path);
 
 #endif
