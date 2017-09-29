@@ -19,6 +19,7 @@ static CFileTable g_FileTable;
 // FILEID-16CHARS-32HEX|VOLUMEID8HEX4CHAR
 std::unordered_map<unsigned char*, char*> FileIdentifierToPathMap;
 std::unordered_map<char*, unsigned char*> PathToFileIdentifierMap;
+std::unordered_map<char*, long long> FileIdentifierLongLognToPathMap;
 
 CFileTable::CFileTable()
 {
@@ -32,6 +33,12 @@ CFileTable::~CFileTable()
 
 unsigned long long CFileTable::GetIDByPath(char *path)
 {
+	path = GetRealPathPath(path);
+
+	if (FileIdentifierLongLognToPathMap.count(path)) {
+		return FileIdentifierLongLognToPathMap[path];
+	}
+
 	return GetFileIdentifierByPathLongLong(path);
 	unsigned char *handle;
 
@@ -125,8 +132,11 @@ int RenameFile(char *pathFrom, char *pathTo)
 	if (errorNumber == 0) { //success
 		// FileIdentifierToPathMap[PathToFileIdentifierMap[pathFrom]] = pathTo;
 		// PathToFileIdentifierMap[pathTo] = PathToFileIdentifierMap[pathFrom];
+		pathFrom = GetRealPathPath(pathFrom);
 		FileIdentifierToPathMap.erase(PathToFileIdentifierMap[pathFrom]);
 		PathToFileIdentifierMap.erase(pathFrom);
+		FileIdentifierLongLognToPathMap.erase(pathFrom);
+		
 		return errorNumber;
 	}
 	else {
@@ -161,8 +171,10 @@ int RenameDirectory(char *pathFrom, char *pathTo)
 	strcpy_s(backDirectoryPathTo, (strlen(pathTo) + 1), pathTo);
 	strcat_s(backDirectoryPathTo, (strlen(pathTo) + 6), backFile);
 
+	pathFrom = GetRealPathPath(pathFrom);
 	FileIdentifierToPathMap.erase(PathToFileIdentifierMap[pathFrom]);
 	PathToFileIdentifierMap.erase(pathFrom);
+	FileIdentifierLongLognToPathMap.erase(pathFrom);
 
 	return errorNumber;
 }
@@ -177,8 +189,10 @@ bool RemoveFile(char *path)
 	unsigned char * fileHandle = GetFileIdentifierByPath(path);
 
     if (remove(path) == 0){
+		path = GetRealPathPath(path);
 		FileIdentifierToPathMap.erase(PathToFileIdentifierMap[path]);
 		PathToFileIdentifierMap.erase(path);
+		FileIdentifierLongLognToPathMap.erase(path);
 		return true;
     }
     return false;
@@ -205,8 +219,10 @@ int RemoveFolder(char *path)
         strcpy_s(backDirectoryPath, (strlen(path) + 1), path);
         strcat_s(backDirectoryPath, (strlen(path) + 6), backFile);
 
+		path = GetRealPathPath(path);
 		FileIdentifierToPathMap.erase(PathToFileIdentifierMap[path]);
 		PathToFileIdentifierMap.erase(path);
+		FileIdentifierLongLognToPathMap.erase(path);
         return 0;
     }
     errorCode = GetLastError();
@@ -215,13 +231,12 @@ int RemoveFolder(char *path)
 
 char* GetPathByFileIdentifier(unsigned char *handle)
 {
-
-	/*
+	
 	if (FileIdentifierToPathMap.count(handle) && FileIdentifierToPathMap[handle] != NULL) {
 		printf("GetPathByFileIdentifier cached: %s", FileIdentifierToPathMap[handle]);
 		return FileIdentifierToPathMap[handle];
 	}
-	*/
+
 	
 	/** drive letter in unc \\?\D:\ */
 	unsigned char * letter[8];
@@ -232,48 +247,12 @@ char* GetPathByFileIdentifier(unsigned char *handle)
 	memcpy_s(fileId, sizeof(fileId), handle, 32);
 	memcpy_s(letter, sizeof(letter), handle + 32 , 8);
 
-	/*
-	long long index2 = strtoull(reinterpret_cast<const char*>(letter), NULL, 16);
-	char foobar[NFS3_FHSIZE];
-	printf("Letter tt %llx", index2);
-	sprintf_s(foobar, "%llx", index2);
-	std::string foo(foobar);
-	std::string thedriveletter;
-	hex2stream(foo, thedriveletter);
-	*/
-	
-	/*
-	if (FileIdentifierToPathMap.count(handle) && FileIdentifierToPathMap[handle] != NULL) {
-		printf("FROM CACHE %s", FileIdentifierToPathMap[handle]);
-		return FileIdentifierToPathMap[handle];
-	}
-	*/
-
-		/*
-	const unsigned char * src = reinterpret_cast<const unsigned char*>(handle);
-	unsigned char * dest = reinterpret_cast<unsigned char *>(letter);
-	memcpy(dest, src + 13, 8);
-	*/
-
-	
-	// https://stackoverflow.com/questions/1163624/memcpy-with-startindex
-		// memcpy(&dst[dstIdx], &src[srcIdx], numElementsToCopy * sizeof(Element));
-		//err = memcpy_s(a1 + 50, 50 * sizeof(*a1), a2, 10 * sizeof(int));
-//	char* pEnd;
-	
-
-
 	long long index = strtoull(reinterpret_cast<const char*>(fileId), NULL, 16);
-
-
 
 	// long long index = strtoull(reinterpret_cast<const char*>(handle), NULL, 16);
 	// printf("LETTEr from index: %i \n\n", sizeof(index));
 	// printf("LETTEr from handele _%s_", letter);
 
-
-
-	
 	HANDLE hDisk, hFile;
 	FILE_ID_DESCRIPTOR fileIDDesc;
 	
@@ -318,7 +297,6 @@ char* GetPathByFileIdentifier(unsigned char *handle)
 	char* chr = _strdup(str.c_str());
 	// printf("FINAL %s\n\n", chr);
 
-//	FileIdentifierToPathMap.insert(std::make_pair(index, chr));
 	/*
 	if (!PathToFileIdentifierMap.count(chr)) {
 		PathToFileIdentifierMap.insert(std::make_pair(chr, handle));
@@ -328,9 +306,7 @@ char* GetPathByFileIdentifier(unsigned char *handle)
 	}
 	*/
 
-
 	return chr;
-
 
 	// TODO: https://stackoverflow.com/questions/23777349/how-to-get-volume-serial-number
 	// https://stackoverflow.com/questions/3091301/how-to-get-file-path-from-ntfs-index-number !!!
@@ -340,96 +316,38 @@ char* GetPathByFileIdentifier(unsigned char *handle)
 // this is normally only called one, after the file handle is used
 unsigned char* GetFileIdentifierByPath(char *path)
 {
+	// get the real file path (resolve .. etc.)
+	path = GetRealPathPath(path);
+
+	if (PathToFileIdentifierMap.count(path) && PathToFileIdentifierMap[path] != NULL) {
+		printf("GetPathByFileIdentifier cached: %llx", PathToFileIdentifierMap[path]);
+		return PathToFileIdentifierMap[path];
+	}
+
 	// get the volumne name
 	char volumeNameBuffer[8];
 	GetVolumePathName(path, volumeNameBuffer, MAX_PATH);
 	
-	path = GetRealPathPath(path);
+	unsigned long long fileId = GetFileIdentifierByPathLongLong(path);
 
-	/*
-	if (PathToFileIdentifierMap.count(path) && PathToFileIdentifierMap[path] != NULL){
-		printf("GetPathByFileIdentifier cached: %llx", PathToFileIdentifierMap[path]);
-		return PathToFileIdentifierMap[path];
-	}
-	*/
 	
-	DWORD fileAttr;
-	BY_HANDLE_FILE_INFORMATION lpFileInformation;
-	HANDLE hFile;
-	DWORD dwFlagsAndAttributes;
 
-	fileAttr = GetFileAttributes(path);
-
-	if (path == NULL || fileAttr == INVALID_FILE_ATTRIBUTES)
-	{
-		return false;
-	}
-
-	dwFlagsAndAttributes = 0;
-
-	if (fileAttr & FILE_ATTRIBUTE_DIRECTORY) {
-		dwFlagsAndAttributes = FILE_ATTRIBUTE_DIRECTORY | FILE_FLAG_BACKUP_SEMANTICS;
-	}
-	else if (fileAttr & FILE_ATTRIBUTE_ARCHIVE) {
-		dwFlagsAndAttributes = FILE_ATTRIBUTE_ARCHIVE | FILE_FLAG_OVERLAPPED;
-	}
-	else if (fileAttr & FILE_ATTRIBUTE_NORMAL) {
-		dwFlagsAndAttributes = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED;
-	}
-	if (fileAttr & FILE_ATTRIBUTE_REPARSE_POINT) {
-		dwFlagsAndAttributes = FILE_ATTRIBUTE_REPARSE_POINT | FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS;
-	}
-
-	hFile = CreateFile(path, FILE_READ_EA, FILE_SHARE_READ, NULL, OPEN_EXISTING, dwFlagsAndAttributes, NULL);
-
-	if (hFile == INVALID_HANDLE_VALUE) {
-		return false;
-	}
-
-	GetFileInformationByHandle(hFile, &lpFileInformation);
-	CloseHandle(hFile);
 	
-	// printf("\n\n %lx \n\n", lpFileInformation.dwVolumeSerialNumber);
-
-	LARGE_INTEGER fileId;
-	fileId.HighPart = lpFileInformation.nFileIndexHigh;
-	fileId.LowPart = lpFileInformation.nFileIndexLow;
-	fileId.QuadPart;
-
 	char buffer[NFS3_FHSIZE];
-	// http://www.cplusplus.com/reference/cstdlib/atoll/
-	//printf("Volume n string: %s", volumeNameBuffer);
-	//printf("Volume n Hex: %li", atol(reinterpret_cast<const char*>(volumeNameBuffer)));
-
-	// std::string foo(volumeNameBuffer);
-	// std::string hex;
-	// stream2hex(foo, hex);
-	//printf("Volume n Hex: %s", hex.c_str());
-	 // unsigned long long ulli2 = strtoull(hex.c_str(), NULL, 16);
-	// printf("Volume n Hex: %016llx", ulli2);
-	_snprintf_s(buffer, NFS3_FHSIZE, "%032llx%s", fileId.QuadPart, volumeNameBuffer);
-	// _snprintf_s(buffer, NFS3_FHSIZE, "%032llx%016llx", fileId.QuadPart, ulli2);
-	// _snprintf_s(buffer, NFS3_FHSIZE, "%032llx", fileId.QuadPart);
-	// _snprintf_s(buffer, NFS3_FHSIZE, "%llx", fileId.QuadPart);
-
-	// printf_s("\n\nPATH %s\n", path);
-	// printf_s("HEX from LongLo: %llx\n", fileId.QuadPart);
-	// printf_s("HEX from String: %s\n", buffer);
+	_snprintf_s(buffer, NFS3_FHSIZE, "%032llx%s", fileId, volumeNameBuffer);
 
 	unsigned char *handle;
 	handle = new unsigned char[NFS3_FHSIZE];
 	memset(handle, 0, NFS3_FHSIZE * sizeof(unsigned char));
 	memcpy(handle, buffer, NFS3_FHSIZE * sizeof(unsigned char));
 
-	// PathToFileIdentifierMap.insert(std::make_pair(path, handle));
-	// FileIdentifierToPathMap.insert(std::make_pair(handle, path));
+	PathToFileIdentifierMap.insert(std::make_pair(path, handle));
+	FileIdentifierToPathMap.insert(std::make_pair(handle, path));
+	FileIdentifierLongLognToPathMap.insert(std::make_pair(path, fileId));
 	
 	return handle;
 }
 
-
-
-// this is normally only called one, after the file handle is used
 unsigned long long GetFileIdentifierByPathLongLong(char *path)
 {
 	DWORD fileAttr;
@@ -534,30 +452,3 @@ char* GetDriveLetterFromVolumeID(char *path) {
 }
 
 */
-// https://msdn.microsoft.com/en-us*//library/aa364993(VS.85).aspx
-
-// https://stackoverflow.com/a/35599923
-// Convert string of chars to its representative string of hex numbers
-void stream2hex(const std::string str, std::string& hexstr, bool capital)
-{
-	hexstr.resize(str.size() * 2);
-	const size_t a = capital ? 'A' - 1 : 'a' - 1;
-
-	for (size_t i = 0, c = str[0] & 0xFF; i < hexstr.size(); c = str[i / 2] & 0xFF)
-	{
-		hexstr[i++] = c > 0x9F ? (c / 16 - 9) | a : c / 16 | '0';
-		hexstr[i++] = (c & 0xF) > 9 ? (c % 16 - 9) | a : c % 16 | '0';
-	}
-}
-
-// Convert string of hex numbers to its equivalent char-stream
-void hex2stream(const std::string hexstr, std::string& str)
-{
-	str.resize((hexstr.size() + 1) / 2);
-
-	for (size_t i = 0, j = 0; i < str.size(); i++, j++)
-	{
-		str[i] = (hexstr[j] & '@' ? hexstr[j] + 9 : hexstr[j]) << 4, j++;
-		str[i] |= (hexstr[j] & '@' ? hexstr[j] + 9 : hexstr[j]) & 0xF;
-	}
-}
